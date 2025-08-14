@@ -111,6 +111,26 @@ class LaptopRemoteServer:
                                           capture_output=True, text=True)
                     if result.returncode != 0:
                         subprocess.run(['amixer', 'set', 'Master', 'toggle'], capture_output=True)
+            elif system == 'windows':
+                if action == 'up':
+                    self.keyboard_controller.press(Key.media_volume_up)
+                    self.keyboard_controller.release(Key.media_volume_up)
+                elif action == 'down':
+                    self.keyboard_controller.press(Key.media_volume_down)
+                    self.keyboard_controller.release(Key.media_volume_down)
+                elif action == 'mute':
+                    self.keyboard_controller.press(Key.media_volume_mute)
+                    self.keyboard_controller.release(Key.media_volume_mute)
+            elif system == 'darwin':  # macOS support as bonus
+                if action == 'up':
+                    self.keyboard_controller.press(Key.media_volume_up)
+                    self.keyboard_controller.release(Key.media_volume_up)
+                elif action == 'down':
+                    self.keyboard_controller.press(Key.media_volume_down)
+                    self.keyboard_controller.release(Key.media_volume_down)
+                elif action == 'mute':
+                    self.keyboard_controller.press(Key.media_volume_mute)
+                    self.keyboard_controller.release(Key.media_volume_mute)
         except Exception as e:
             print(f"Volume control error: {e}")
     

@@ -12,6 +12,7 @@ import {
   GestureHandlerRootView,
   PanGestureHandler,
   PanGestureHandlerGestureEvent,
+  State,
 } from 'react-native-gesture-handler';
 
 const App = () => {
@@ -22,7 +23,11 @@ const App = () => {
   
   // Trackpad smoothing variables
   const lastMoveTime = useRef(0);
-  const lastPosition = useRef({ x: 0, y: 0 });
+  
+  // Tap detection variables
+  const gestureStartTime = useRef(0);
+  const gestureStartPosition = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
 
   const sendCommand = async (command: string, data?: any) => {
     try {
@@ -68,17 +73,54 @@ const App = () => {
     }
     lastMoveTime.current = now;
 
-    // Use velocity for smoother movement (scaled down)
-    const sensitivity = 0.025; // Adjust this for speed (0.01 = slow, 0.05 = fast)
-    const smoothX = velocityX * sensitivity;
-    const smoothY = velocityY * sensitivity;
+    // Check if this is significant movement (more than a small threshold)
+    const totalMovement = Math.sqrt(translationX * translationX + translationY * translationY);
+    if (totalMovement > 5) { // 5px threshold to distinguish tap from drag
+      hasMoved.current = true;
+    }
 
-    // Only send movement if it's significant
-    if (Math.abs(smoothX) > 0.05 || Math.abs(smoothY) > 0.05) {
-      sendCommand('mouse_move_relative', {
-        x: Math.round(smoothX),
-        y: Math.round(smoothY)
-      });
+    // Only send movement if we're in a drag gesture and movement is significant
+    if (hasMoved.current) {
+      // Use velocity for smoother movement (scaled down)
+      const sensitivity = 0.025; // Adjust this for speed (0.01 = slow, 0.05 = fast)
+      const smoothX = velocityX * sensitivity;
+      const smoothY = velocityY * sensitivity;
+
+      // Only send movement if it's significant
+      if (Math.abs(smoothX) > 0.05 || Math.abs(smoothY) > 0.05) {
+        sendCommand('mouse_move_relative', {
+          x: Math.round(smoothX),
+          y: Math.round(smoothY)
+        });
+      }
+    }
+  };
+
+  const handleTrackpadStateChange = (event: any) => {
+    const { state, x, y } = event.nativeEvent;
+    const now = Date.now();
+
+    if (state === State.BEGAN) {
+      // Gesture started - record start time and position
+      gestureStartTime.current = now;
+      gestureStartPosition.current = { x, y };
+      hasMoved.current = false;
+    } else if (state === State.END) {
+      // Gesture ended - check if it was a tap
+      const gestureDuration = now - gestureStartTime.current;
+      const isQuickTap = gestureDuration < 200; // Less than 200ms
+      const isSmallMovement = !hasMoved.current;
+
+      if (isQuickTap && isSmallMovement) {
+        // This was a tap - send left click
+        sendCommand('click', { button: 'left' });
+      }
+      
+      // Reset tracking variables
+      hasMoved.current = false;
+    } else if (state === State.CANCELLED || state === State.FAILED) {
+      // Reset tracking variables
+      hasMoved.current = false;
     }
   };
 
@@ -124,12 +166,13 @@ const App = () => {
           <Text style={styles.sectionTitle}>Trackpad</Text>
           <PanGestureHandler 
             onGestureEvent={handleTrackpadGesture}
+            onHandlerStateChange={handleTrackpadStateChange}
             minDist={0}
             shouldCancelWhenOutside={false}
           >
             <View style={styles.trackpad}>
               <Text style={styles.trackpadText}>
-                Move your finger smoothly to control mouse{'\n'}
+                Tap to click • Drag to move cursor{'\n'}
                 Sensitivity: Normal
               </Text>
             </View>
