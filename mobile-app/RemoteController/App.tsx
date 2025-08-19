@@ -178,12 +178,20 @@ const App = () => {
             onChangeText={setTextToSend}
             multiline
           />
-          <TouchableOpacity
-            style={styles.button}
-            onPress={sendText}
-          >
-            <Text style={styles.buttonText}>Send Text</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginTop: 8 }}>
+            <TouchableOpacity
+              style={[styles.button, { marginRight: 8 }]}
+              onPress={sendText}
+            >
+              <Text style={styles.buttonText}>Send Text</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => sendCommand('type_enter')}
+            >
+              <Text style={styles.buttonText}>Enter</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Media Controls */}
@@ -211,7 +219,9 @@ const App = () => {
           </View>
         </View>
 
+    
         {/* Volume Controls */}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Volume</Text>
           <View style={styles.volumeControls}>
@@ -234,7 +244,9 @@ const App = () => {
               <Text style={styles.buttonText}>Up +</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View> 
+
+        
       </ScrollView>
     </GestureHandlerRootView>
   );

@@ -18,7 +18,6 @@ class LaptopRemoteServer:
         self.last_move_time = 0
         
     def handle_command(self, command, data):
-        """Handle different types of commands"""
         try:
             if command == 'click':
                 self.handle_mouse_click(data)
@@ -28,6 +27,8 @@ class LaptopRemoteServer:
                 self.handle_scroll(data)
             elif command == 'type_text':
                 self.handle_type_text(data)
+            elif command == 'type_enter':
+                self.handle_type_enter()
             elif command == 'volume':
                 self.handle_volume(data)
             elif command == 'media':
@@ -88,9 +89,16 @@ class LaptopRemoteServer:
         """Handle typing text"""
         text = data.get('text', '')
         self.keyboard_controller.type(text)
+
     
+    def handle_type_enter(self):
+        """Handle pressing the Enter key"""
+        self.keyboard_controller.press(Key.enter)
+        self.keyboard_controller.release(Key.enter)
+
+
     def handle_volume(self, data):
-        """Handle volume control commands"""
+        """Handle volume control commands - Enhanced Linux/Windows support"""
         action = data.get('action')
         system = platform.system().lower()
         
@@ -98,22 +106,63 @@ class LaptopRemoteServer:
             if system == 'linux':
                 if action == 'up':
                     result = subprocess.run(['pactl', 'set-sink-volume', '@DEFAULT_SINK@', '+5%'], 
-                                          capture_output=True, text=True)
+                                        capture_output=True, text=True, timeout=2)
                     if result.returncode != 0:
-                        subprocess.run(['amixer', 'set', 'Master', '5%+'], capture_output=True)
+                        subprocess.run(['amixer', 'set', 'Master', '5%+'], 
+                                    capture_output=True, timeout=2)
                 elif action == 'down':
                     result = subprocess.run(['pactl', 'set-sink-volume', '@DEFAULT_SINK@', '-5%'], 
-                                          capture_output=True, text=True)
+                                        capture_output=True, text=True, timeout=2)
                     if result.returncode != 0:
-                        subprocess.run(['amixer', 'set', 'Master', '5%-'], capture_output=True)
+                        subprocess.run(['amixer', 'set', 'Master', '5%-'], 
+                                    capture_output=True, timeout=2)
                 elif action == 'mute':
                     result = subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'toggle'], 
-                                          capture_output=True, text=True)
+                                        capture_output=True, text=True, timeout=2)
                     if result.returncode != 0:
-                        subprocess.run(['amixer', 'set', 'Master', 'toggle'], capture_output=True)
+                        subprocess.run(['amixer', 'set', 'Master', 'toggle'], 
+                                    capture_output=True, timeout=2)
+            elif system == 'windows':
+                # Windows volume control using nircmd or pycaw
+                try:
+                    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+                    from comtypes import CLSCTX_ALL
+                    from ctypes import cast, POINTER
+                    
+                    devices = AudioUtilities.GetSpeakers()
+                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                    volume = cast(interface, POINTER(IAudioEndpointVolume))
+                    
+                    if action == 'up':
+                        current = volume.GetMasterVolume()
+                        volume.SetMasterVolume(min(1.0, current + 0.05), None)
+                    elif action == 'down':
+                        current = volume.GetMasterVolume()
+                        volume.SetMasterVolume(max(0.0, current - 0.05), None)
+                    elif action == 'mute':
+                        volume.SetMute(not volume.GetMute(), None)
+                except ImportError:
+                    # Fallback to nircmd if pycaw not available
+                    nircmd_path = "nircmd.exe"  # Make sure nircmd.exe is in PATH
+                    if action == 'up':
+                        subprocess.run([nircmd_path, 'changesysvolume', '2000'], timeout=2)
+                    elif action == 'down':
+                        subprocess.run([nircmd_path, 'changesysvolume', '-2000'], timeout=2)
+                    elif action == 'mute':
+                        subprocess.run([nircmd_path, 'mutesysvolume', '2'], timeout=2)
+            elif system == 'darwin':  # macOS support
+                if action == 'up':
+                    subprocess.run(['osascript', '-e', 'set volume output volume (output volume of (get volume settings) + 5)'], timeout=2)
+                elif action == 'down':
+                    subprocess.run(['osascript', '-e', 'set volume output volume (output volume of (get volume settings) - 5)'], timeout=2)
+                elif action == 'mute':
+                    subprocess.run(['osascript', '-e', 'set volume output muted (not (output muted of (get volume settings)))'], timeout=2)
+                    
+        except subprocess.TimeoutExpired:
+            print("Volume control command timed out")
         except Exception as e:
             print(f"Volume control error: {e}")
-    
+
     def handle_media(self, data):
         """Handle media control commands"""
         action = data.get('action')
