@@ -1,5 +1,11 @@
 pluginManagement {
     includeBuild("../node_modules/@react-native/gradle-plugin")
 }
+plugins { id("com.facebook.react.settings") }
+// extensions.configure(com.facebook.react.ReactSettingsExtension) { autolinkLibrariesFromCommand() }
 rootProject.name = "RemoteController"
 include(":app")
+include(":react-native-gesture-handler")
+project(":react-native-gesture-handler").projectDir = file("../node_modules/react-native-gesture-handler/android")
+include(":react-native-tcp-socket")
+project(":react-native-tcp-socket").projectDir = file("../node_modules/react-native-tcp-socket/android")
