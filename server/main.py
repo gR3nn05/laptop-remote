@@ -23,7 +23,7 @@ from cryptography.hazmat.backends import default_backend
 
 # Configuration
 UDP_PORT = 55555
-HTTP_PORT = 5000
+HTTP_PORT = 5001
 PAIRING_CODE_LENGTH = 6
 
 class SecurityManager:
@@ -305,6 +305,11 @@ class LaptopRemoteServer:
         udp_server = UDPServer(self)
         udp_server.start()
 
+        local_ip = udp_server.get_local_ip()
+        print(f"   SERVER IP:   {local_ip}")
+        print(f"   HTTP PORT:   {self.port}")
+        print(f"{'='*40}\n")
+        
         class RequestHandler(BaseHTTPRequestHandler):
             def __init__(self, remote_server, *args, **kwargs):
                 self.remote_server = remote_server

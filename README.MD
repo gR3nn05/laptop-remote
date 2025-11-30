@@ -1,66 +1,64 @@
-# Laptop Remote Controller
+# Laptop Remote
 
-A secure, cross-platform remote control application that allows you to control your laptop's mouse, keyboard, and media functions from your mobile device.
+A simple, secure, and **cross-platform** app that turns your phone into a trackpad and keyboard for your laptop. I built this because I wanted a reliable way to control my computer (**macOS, Windows, or Linux**) from the couch without dealing with ads or subscription fees.
 
-## Features
+## What it does
+It connects your phone to your laptop over Wi-Fi, giving you control over:
+*   **Mouse**: Smooth trackpad movement with left/right clicks and scrolling.
+*   **Keyboard**: Type remotely and use keys like Enter, Backspace, and Browser Navigation.
+*   **Media**: Play/Pause, Volume control, and Track skipping.
 
-- **Secure Communication**: End-to-end encryption using AES-256 and HMAC authentication.
-- **Trackpad Control**: Low-latency mouse movement using UDP with HTTP fallback.
-- **Keyboard Input**: Live text input and special key support (Backspace, Enter, Browser Navigation).
-- **Media Controls**: Play/Pause, Previous/Next track, and Volume control.
-- **Cross-Platform**: Server runs on Python (Windows/Linux/macOS), Client runs on React Native (Android/iOS).
+## How it works
+*   **The Server**: A lightweight Python script runs on your laptop (macOS/Windows/Linux).
+*   **The App**: A React Native app on your phone (iOS/Android) sends commands securely.
+*   **Security**: Everything is encrypted (AES-256), so no one else on your network can hijack your mouse.
 
-## Prerequisites
+## Getting Started
 
-- **Server**: Python 3.7 or higher.
-- **Client**: Node.js, npm, and a React Native development environment (Android Studio or Xcode).
+### 1. Run the Server (Laptop)
+Works on macOS, Windows, and Linux. You'll need Python 3 installed.
+```bash
+cd server
+pip install -r requirements.txt
+python main.py
+```
+It will show you a **Pairing Code** and your **IP Address**.
 
-## Installation
+### 2. Run the App (Phone)
+First, install the project dependencies:
+```bash
+cd mobile-app/RemoteController
+npm install
+```
 
-### Server
+**iOS:**
+1.  Install native pods:
+    ```bash
+    cd ios && pod install && cd ..
+    ```
+2.  Run on simulator or device:
+    ```bash
+    npx react-native run-ios
+    ```
+    *(Or open `ios/RemoteController.xcworkspace` in Xcode)*
 
-1. Navigate to the server directory:
-   ```bash
-   cd server
-   ```
-2. Install the required Python packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
+**Android:**
+1.  Start an emulator or connect your device.
+2.  Run the app:
+    ```bash
+    npx react-native run-android
+    ```
 
-### Mobile App
+### 3. Connect
+Open the app, enter the **Pairing Code**, and hit **Pair**.
+*   The app tries to find your laptop automatically.
+*   If it can't (e.g., due to firewall/network settings), just enter the IP address manually.
 
-1. Navigate to the app directory:
-   ```bash
-   cd mobile-app/RemoteController
-   ```
-2. Install the JavaScript dependencies:
-   ```bash
-   npm install
-   ```
-
-## Usage
-
-1. **Start the Server**:
-   Run the Python server on your laptop. It will display a 6-digit pairing code.
-   ```bash
-   python server/main.py
-   ```
-
-2. **Run the App**:
-   Launch the application on your mobile device or emulator.
-   - Android: `npx react-native run-android`
-   - iOS: `npx react-native run-ios`
-
-3. **Connect**:
-   - Tap "Scan Network" to automatically detect the server.
-   - Enter the 6-digit pairing code displayed on the server.
-   - Tap "Connect & Pair".
-
-## Network Configuration
-
-Ensure both devices are connected to the same Wi-Fi network. You may need to allow traffic on ports 5000 (TCP) and 55555 (UDP) through your firewall.
+## Tech Stack & Learnings
+Built with **Python** and **React Native**.
+*   **Networking**: Uses UDP for fast mouse movement and HTTP for reliable typing/media commands.
+*   **iOS Challenges**: Implemented a custom subnet scanner to find the server without needing complex Apple permissions (Multicast entitlements).
+*   **Security**: Implemented a custom handshake with HMAC authentication to keep it safe.
 
 ## License
-
-This project is open source and available under the MIT License.
+MIT License. Feel free to fork it and make it your own!

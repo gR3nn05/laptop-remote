@@ -8,6 +8,9 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  SafeAreaView,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import {
   GestureHandlerRootView,
@@ -21,8 +24,8 @@ import { Buffer } from 'buffer';
 const UDP_PORT = 55555;
 
 const App = () => {
-  const [serverIP, setServerIP] = useState('');
-  const [serverPort, setServerPort] = useState('5000');
+  const [serverIP, setServerIP] = useState('192.168.0.103'); // Pre-filled with your detected IP
+  const [serverPort, setServerPort] = useState('5001'); // Fixed default port to 5001
   const [pairingCode, setPairingCode] = useState('');
   const [connected, setConnected] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -135,19 +138,54 @@ const App = () => {
 
   const discoverServer = () => {
     setScanning(true);
-    setServerIP('');
+    // Don't clear serverIP here so the user can see the default
     setServerName('');
     setConnected(false);
 
     const socket = dgram.createSocket({ type: 'udp4' });
-    socket.bind(UDP_PORT);
+    // Bind to random port (0) instead of fixed port to avoid conflicts and allow OS allocation
+    socket.bind(0);
 
     socket.once('listening', () => {
-      socket.setBroadcast(true);
       const message = JSON.stringify({ type: 'DISCOVER' });
-      socket.send(message, 0, message.length, UDP_PORT, '255.255.255.255', (err) => {
-        if (err) console.log('UDP Send Error', err);
-      });
+
+      // Throttled scan to avoid overwhelming the network stack
+      const scanSubnet = async (subnetBase: string) => {
+        for (let i = 1; i < 255; i++) {
+          const targetIP = `${subnetBase}.${i}`;
+          socket.send(message, 0, message.length, UDP_PORT, targetIP, (err) => {
+            // Ignore errors
+          });
+          // Small delay every 10 packets
+          if (i % 10 === 0) await new Promise(r => setTimeout(r, 10));
+        }
+      };
+
+      // Also try standard broadcast as a fallback
+      socket.setBroadcast(true);
+      socket.send(message, 0, message.length, UDP_PORT, '255.255.255.255', (err) => { });
+
+      // Run scan
+      scanSubnet('192.168.0');
+      scanSubnet('192.168.1');
+
+      // Repeat scan after 1.5s
+      const timeoutId = setTimeout(() => {
+        if (scanning) {
+          scanSubnet('192.168.0');
+          scanSubnet('192.168.1');
+        }
+      }, 1500);
+
+      // Stop scanning after 4 seconds
+      setTimeout(() => {
+        clearTimeout(timeoutId);
+        if (scanning) {
+          setScanning(false);
+          try { socket.close(); } catch (e) { }
+          if (!serverIP) Alert.alert('Timeout', 'No server found. Try Manual IP.');
+        }
+      }, 4000);
     });
 
     socket.on('message', (msg, rinfo) => {
@@ -165,14 +203,6 @@ const App = () => {
         console.log('UDP Parse Error', e);
       }
     });
-
-    setTimeout(() => {
-      if (scanning) {
-        setScanning(false);
-        try { socket.close(); } catch (e) { }
-        if (!serverIP) Alert.alert('Timeout', 'No server found');
-      }
-    }, 3000);
   };
 
   const testConnection = async () => {
@@ -227,139 +257,163 @@ const App = () => {
   };
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.headerTitle}>CONTROLLER</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#050505" />
+      <GestureHandlerRootView style={styles.contentContainer}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.headerTitle}>CONTROLLER</Text>
 
-        {/* Connection Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, connected ? styles.dotGreen : styles.dotRed]} />
-              <Text style={styles.statusText}>{connected ? 'CONNECTED' : 'DISCONNECTED'}</Text>
+          {/* Connection Card */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.statusContainer}>
+                <View style={[styles.statusDot, connected ? styles.dotGreen : styles.dotRed]} />
+                <Text style={styles.statusText}>{connected ? 'CONNECTED' : 'DISCONNECTED'}</Text>
+              </View>
+              {serverName ? <Text style={styles.serverName}>{serverName}</Text> : null}
             </View>
-            {serverName ? <Text style={styles.serverName}>{serverName}</Text> : null}
-          </View>
 
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="PAIRING CODE"
-              placeholderTextColor="#555"
-              value={pairingCode}
-              onChangeText={setPairingCode}
-              keyboardType="numeric"
-              maxLength={6}
-            />
-          </View>
-
-          <View style={styles.row}>
-            <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={discoverServer}>
-              {scanning ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>SCAN</Text>}
-            </TouchableOpacity>
-            <View style={{ width: 10 }} />
-            <TouchableOpacity style={[styles.button, styles.buttonPrimary]} onPress={testConnection}>
-              <Text style={styles.buttonText}>{connected ? 'PAIRED' : 'PAIR'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Trackpad */}
-        <View style={styles.trackpadContainer}>
-          <PanGestureHandler onGestureEvent={handleTrackpadGesture}>
-            <View style={styles.trackpad}>
-              <Text style={styles.trackpadLabel}>TOUCH SURFACE</Text>
+            <View style={styles.inputContainer}>
+              <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+                <TextInput
+                  style={[styles.input, { flex: 3, marginRight: 5, fontSize: 14 }]}
+                  placeholder="SERVER IP"
+                  placeholderTextColor="#555"
+                  value={serverIP}
+                  onChangeText={setServerIP}
+                  autoCapitalize="none"
+                  keyboardType="numbers-and-punctuation"
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1, marginLeft: 5, fontSize: 14 }]}
+                  placeholder="PORT"
+                  placeholderTextColor="#555"
+                  value={serverPort}
+                  onChangeText={setServerPort}
+                  keyboardType="numeric"
+                />
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="PAIRING CODE"
+                placeholderTextColor="#555"
+                value={pairingCode}
+                onChangeText={setPairingCode}
+                keyboardType="numeric"
+                maxLength={6}
+              />
             </View>
-          </PanGestureHandler>
 
-          <View style={styles.mouseRow}>
-            <TouchableOpacity style={styles.mouseBtn} onPress={() => sendCommand('click', { button: 'left' })}>
-              <Text style={styles.btnLabel}>L</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.mouseBtn} onPress={() => sendCommand('click', { button: 'right' })}>
-              <Text style={styles.btnLabel}>R</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.scrollRow}>
-            <TouchableOpacity style={styles.scrollBtn} onPress={() => sendCommand('scroll', { direction: 'up' })}>
-              <Text style={styles.btnLabel}>▲</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.scrollBtn} onPress={() => sendCommand('scroll', { direction: 'down' })}>
-              <Text style={styles.btnLabel}>▼</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Controls Grid */}
-        <View style={styles.grid}>
-          <View style={styles.gridCol}>
-            <Text style={styles.sectionLabel}>INPUT</Text>
-            <TextInput
-              style={styles.miniInput}
-              placeholder="TYPE..."
-              placeholderTextColor="#444"
-              onKeyPress={handleKeyPress}
-              onChangeText={handleChangeText}
-              value=""
-              autoCorrect={false}
-            />
-            <View style={styles.miniRow}>
-              <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'backspace' })}>
-                <Text style={styles.miniBtnText}>⌫</Text>
+            <View style={styles.row}>
+              <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={discoverServer}>
+                {scanning ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>SCAN</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_enter')}>
-                <Text style={styles.miniBtnText}>↵</Text>
+              <View style={{ width: 10 }} />
+              <TouchableOpacity style={[styles.button, styles.buttonPrimary]} onPress={testConnection}>
+                <Text style={styles.buttonText}>{connected ? 'PAIRED' : 'PAIR'}</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.gridCol}>
-            <Text style={styles.sectionLabel}>NAV</Text>
-            <View style={styles.miniRow}>
-              <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'browser_back' })}>
-                <Text style={styles.miniBtnText}>←</Text>
+          {/* Trackpad */}
+          <View style={styles.trackpadContainer}>
+            <PanGestureHandler onGestureEvent={handleTrackpadGesture}>
+              <View style={styles.trackpad}>
+                <Text style={styles.trackpadLabel}>TOUCH SURFACE</Text>
+              </View>
+            </PanGestureHandler>
+
+            <View style={styles.mouseRow}>
+              <TouchableOpacity style={styles.mouseBtn} onPress={() => sendCommand('click', { button: 'left' })}>
+                <Text style={styles.btnLabel}>L</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'browser_forward' })}>
-                <Text style={styles.miniBtnText}>→</Text>
+              <TouchableOpacity style={styles.mouseBtn} onPress={() => sendCommand('click', { button: 'right' })}>
+                <Text style={styles.btnLabel}>R</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.scrollRow}>
+              <TouchableOpacity style={styles.scrollBtn} onPress={() => sendCommand('scroll', { direction: 'up' })}>
+                <Text style={styles.btnLabel}>▲</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.scrollBtn} onPress={() => sendCommand('scroll', { direction: 'down' })}>
+                <Text style={styles.btnLabel}>▼</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
 
-        {/* Media Bar */}
-        <View style={styles.mediaBar}>
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => sendCommand('media', { action: 'previous' })}>
-            <Text style={styles.mediaText}>⏮</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mediaBtnMain} onPress={() => sendCommand('media', { action: 'play_pause' })}>
-            <Text style={styles.mediaTextMain}>⏯</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mediaBtn} onPress={() => sendCommand('media', { action: 'next' })}>
-            <Text style={styles.mediaText}>⏭</Text>
-          </TouchableOpacity>
-        </View>
+          {/* Controls Grid */}
+          <View style={styles.grid}>
+            <View style={styles.gridCol}>
+              <Text style={styles.sectionLabel}>INPUT</Text>
+              <TextInput
+                style={styles.miniInput}
+                placeholder="TYPE..."
+                placeholderTextColor="#444"
+                onKeyPress={handleKeyPress}
+                onChangeText={handleChangeText}
+                value=""
+                autoCorrect={false}
+              />
+              <View style={styles.miniRow}>
+                <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'backspace' })}>
+                  <Text style={styles.miniBtnText}>⌫</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_enter')}>
+                  <Text style={styles.miniBtnText}>↵</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-        {/* Volume Bar */}
-        <View style={styles.volumeBar}>
-          <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'down' })}>
-            <Text style={styles.volText}>-</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'mute' })}>
-            <Text style={styles.volText}>MUTE</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'up' })}>
-            <Text style={styles.volText}>+</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.gridCol}>
+              <Text style={styles.sectionLabel}>NAV</Text>
+              <View style={styles.miniRow}>
+                <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'browser_back' })}>
+                  <Text style={styles.miniBtnText}>←</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.miniBtn} onPress={() => sendCommand('type_key', { key: 'browser_forward' })}>
+                  <Text style={styles.miniBtnText}>→</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
 
-      </ScrollView>
-    </GestureHandlerRootView>
+          {/* Media Bar */}
+          <View style={styles.mediaBar}>
+            <TouchableOpacity style={styles.mediaBtn} onPress={() => sendCommand('media', { action: 'previous' })}>
+              <Text style={styles.mediaText}>⏮</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.mediaBtnMain} onPress={() => sendCommand('media', { action: 'play_pause' })}>
+              <Text style={styles.mediaTextMain}>⏯</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.mediaBtn} onPress={() => sendCommand('media', { action: 'next' })}>
+              <Text style={styles.mediaText}>⏭</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Volume Bar */}
+          <View style={styles.volumeBar}>
+            <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'down' })}>
+              <Text style={styles.volText}>-</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'mute' })}>
+              <Text style={styles.volText}>MUTE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.volBtn} onPress={() => sendCommand('volume', { action: 'up' })}>
+              <Text style={styles.volText}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </GestureHandlerRootView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050505' },
+  contentContainer: { flex: 1 },
+
   scrollContent: { padding: 20, paddingBottom: 50 },
   headerTitle: { fontSize: 24, fontWeight: '900', color: '#fff', letterSpacing: 4, textAlign: 'center', marginBottom: 25, opacity: 0.8 },
 
